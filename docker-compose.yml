@@ -1,0 +1,36 @@
+version: '2.3'
+
+services:
+  main:
+    container_name: DeepfakeBench
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    runtime: nvidia
+    restart: always
+    ipc: "host"
+    env_file:
+      - "docker-compose/main.env"
+    volumes:
+      - dataset:/dataset
+      - nfs_shared:/nfs_shared
+    ports:
+      - "32000:8000"
+      - "32022:22"
+    stdin_open: true
+    tty: true
+    environment:
+      TZ: Asia/Seoul
+
+volumes:
+  dataset:
+    driver: local
+    driver_opts:
+      type: none
+      device: /media/mmlab/hdd
+      o: bind
+  nfs_shared:
+    driver_opts:
+      type: "nfs"
+      o: "addr=mldisk2.sogang.ac.kr,nolock,soft,rw"
+      device: ":/volume1/nfs_shared"
