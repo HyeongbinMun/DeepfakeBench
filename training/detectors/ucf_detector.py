@@ -48,7 +48,7 @@ from networks import BACKBONE
 from loss import LOSSFUNC
 
 logger = logging.getLogger(__name__)
-
+  
 @DETECTOR.register_module(module_name='ucf')
 class UCFDetector(AbstractDetector):
     def __init__(self, config):
@@ -110,7 +110,7 @@ class UCFDetector(AbstractDetector):
         backbone.load_state_dict(state_dict, False)
         logger.info('Load pretrained model successfully!')
         return backbone
-    
+  
     def build_loss(self, config):
         cls_loss_class = LOSSFUNC[config['loss_func']['cls_loss']]
         spe_loss_class = LOSSFUNC[config['loss_func']['spe_loss']]
@@ -127,15 +127,25 @@ class UCFDetector(AbstractDetector):
             'rec': rec_loss_func,
         }
         return loss_func
-    
+
     def features(self, data_dict: dict) -> torch.tensor:
         cat_data = data_dict['image']
         # encoder
         f_all = self.encoder_f.features(cat_data)
         c_all = self.encoder_c.features(cat_data)
+        f_all.requires_grad_(True)
+        c_all.requires_grad_(True)
+        self.gradients = {}
+        f_all.register_hook(self.save_gradient('forgery'))
+        c_all.register_hook(self.save_gradient('content'))
         feat_dict = {'forgery': f_all, 'content': c_all}
         return feat_dict
-
+    
+    def save_gradient(self, name):
+        def hook(grad):
+            self.gradients[name] = grad
+        return hook
+    
     def classifier(self, features: torch.tensor) -> torch.tensor:
         # classification, multi-task
         # split the features into the specific and common forgery
@@ -261,7 +271,7 @@ class UCFDetector(AbstractDetector):
             self.total += data_dict['label'].size(0)
 
             pred_dict = {'cls': out_sha, 'feat': sha_feat}
-            return  pred_dict
+            return  pred_dict, out_spe
 
         bs = f_share.size(0)
         # using idx aug in the training mode
@@ -285,6 +295,7 @@ class UCFDetector(AbstractDetector):
 
         # ==== self reconstruction ==== #
         # f1 + c1 -> f11, f11 + c1 -> near~I1
+        print(f1.shape, c1.shape)
         self_reconstruction_image_1 = self.con_gan(f1, c1)
 
         # f2 + c2 -> f2, f2 + c2 -> near~I2
