@@ -295,7 +295,6 @@ class UCFDetector(AbstractDetector):
 
         # ==== self reconstruction ==== #
         # f1 + c1 -> f11, f11 + c1 -> near~I1
-        print(f1.shape, c1.shape)
         self_reconstruction_image_1 = self.con_gan(f1, c1)
 
         # f2 + c2 -> f2, f2 + c2 -> near~I2
