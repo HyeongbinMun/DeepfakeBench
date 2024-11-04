@@ -152,7 +152,7 @@ class SpslDetector(AbstractDetector):
             self.correct += correct
             self.total += data_dict['label'].size(0)
 
-        return pred_dict
+        return pred_dict, phase_fea
 
     def phase_without_amplitude(self, img):
         # Convert to grayscale
