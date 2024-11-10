@@ -65,6 +65,7 @@ RUN pip install --no-cache-dir certifi setuptools \
     filterpy \
     simplejson \
     kornia \
+    albumentations \
     git+https://github.com/openai/CLIP.git
 
 ENV MODEL_NAME=deepfakebench
