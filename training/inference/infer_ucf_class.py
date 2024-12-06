@@ -15,13 +15,13 @@ from detectors import DETECTOR
 
 class DeepfakeInference:
     def __init__(self,
-                 detector_path='/workspace/DeepfakeBench/training/config/detector/ucf.yaml',
-                 test_config_path='/workspace/DeepfakeBench/training/config/test_config.yaml',
-                 weights_path='/workspace/DeepfakeBench/training/weights/ucf_best.pth',
-                 xception_path='/workspace/DeepfakeBench/training/weights/xception-b5690688.pth',
-                 efficientnet_path='/workspace/DeepfakeBench/training/weights/efficientnet-b4-6ed6700e.pth',
-                 face_crop_predictor='/workspace/DeepfakeBench/preprocessing/dlib_tools/shape_predictor_81_face_landmarks.dat',
-                 save_path='/workspace/DeepfakeBench/training/images/'):
+                 detector_path='/user/training/config/detector/ucf.yaml',
+                 test_config_path='/user/training/config/test_config.yaml',
+                 weights_path='/nfs_shared/deepfake/pretrained_model/ucf_best.pth',
+                 xception_path='/nfs_shared/deepfake/pretrained_model/xception-b5690688.pth',
+                 efficientnet_path='/nfs_shared/deepfake/pretrained_model/efficientnet-b4-6ed6700e.pth',
+                 face_crop_predictor='/nfs_shared/deepfake/pretrained_model/shape_predictor_81_face_landmarks.dat',
+                 save_path='/user/'):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.detector_path = detector_path
@@ -99,30 +99,30 @@ class DeepfakeInference:
 
         features = feature_extractor(x)
         forgery_features, content_features = features['forgery'], features['content']
-        output = classifier(forgery_features)
-        class_score = output[target_class].sum()
+
+        
+        f_spe, f_share = classifier(forgery_features)
+        out_sha, sha_feat = model.head_sha(f_share)
+        class_score = out_sha[0, target_class]
 
         model.zero_grad()
-        class_score.backward()
-        gradients = model.gradients['forgery']
-        activations = output
-        pooled_gradients = torch.mean(gradients, dim=[0, 2, 3])
+        class_score.backward(retain_graph=True)
+        gradients = model.gradients['classifier']
+        activation = model.activation['activation']
+        
 
-        for i in range(len(activations)):
-            activations[i][:, :, :, :] *= pooled_gradients[i]
+        pooled_gradients = torch.mean(gradients, dim=[0, 2, 3], keepdim=True)
 
-        heatmap1 = torch.mean(activations[0], dim=1).squeeze()
-        heatmap1 = F.relu(heatmap1)
+        weighted_activations = activation * pooled_gradients
+        heatmap = torch.mean(weighted_activations, dim=1).squeeze()
 
-        heatmap2 = torch.mean(activations[1], dim=1).squeeze()
-        heatmap2 = F.relu(heatmap2)
-
-        heatmap = (heatmap1 + heatmap2) / 2
-        heatmap_resized = torch.nn.functional.interpolate(heatmap.unsqueeze(0).unsqueeze(0),
-                                                          x['image'].shape[2:],
-                                                          mode='bilinear',
-                                                          align_corners=False).squeeze()
+        heatmap = F.relu(heatmap)
+        heatmap_resized = F.interpolate(heatmap.unsqueeze(0).unsqueeze(0),
+                                        x['image'].shape[2:],
+                                        mode='bilinear',
+                                        align_corners=False).squeeze()
         heatmap_normalized = (heatmap_resized - heatmap_resized.min()) / (heatmap_resized.max() - heatmap_resized.min())
+        
         return heatmap_normalized.cpu().detach().numpy()
 
     def grad_cam_img(self, image, grad_cam):
@@ -137,8 +137,6 @@ class DeepfakeInference:
 
         plt.close(fig)
         return data
-
-    import torch.nn.functional as F
 
     def run_inference(self, image_path):
         file_name = image_path.split('/')[-1][:-4]
@@ -175,20 +173,22 @@ class DeepfakeInference:
 
         # Generate Grad-CAM image
         gradcam_map = self.grad_cam(self.model, data_dict, class_result)
-
         gradcam_map_uint8 = (gradcam_map * 255).astype(np.uint8)
-        colormap = plt.get_cmap("viridis")
+        colormap = plt.get_cmap("jet")
         gradcam_map_colored = colormap(gradcam_map_uint8 / 255.0)[:, :, :3]
         gradcam_map_rgb = (gradcam_map_colored * 255).astype(np.uint8)
+        # cv2.imwrite("/user/real_grad_cam.png", gradcam_map_rgb)
 
         overlayed_image = self.grad_cam_img(data_dict['image'], gradcam_map)
         overlay_img_np = np.array(overlayed_image)
+        # cv2.imwrite('/user/real_overlayed.png', overlay_img_np)
+
 
         out_images = [cropped_img_np, gradcam_map_rgb, overlay_img_np]
 
         return results, out_images
 
-# 클래스 사용 예제
+# # 클래스 사용 예제
 # inference_runner = DeepfakeInference()
-# img_path = '/workspace/DeepfakeBench/training/images/354_fake.png'
+# img_path = '/user/visualization_images/sample_real_crop.png'
 # results, out_images = inference_runner.run_inference(img_path)

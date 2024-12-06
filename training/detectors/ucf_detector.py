@@ -146,11 +146,26 @@ class UCFDetector(AbstractDetector):
             self.gradients[name] = grad
         return hook
     
+    def save_activation(self, name):
+        def hook(module, input, output):
+            self.activation[name] = output
+        return hook
+    
     def classifier(self, features: torch.tensor) -> torch.tensor:
         # classification, multi-task
         # split the features into the specific and common forgery
         f_spe = self.block_spe(features)
+        self.activation = {}
+
+        hook = self.block_sha.register_forward_hook(self.save_activation('activation'))
         f_share = self.block_sha(features)
+    
+        f_share.requires_grad_(True)
+        self.gradients = {}
+        f_share.register_hook(self.save_gradient('classifier'))
+
+        hook.remove()
+
         return f_spe, f_share
     
     def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
