@@ -101,7 +101,7 @@ class F3netDetector(AbstractDetector):
     
     def features(self, data_dict: dict) -> torch.tensor:
         fea_FAD = self.FAD_head(data_dict['image']) # [B, 12, 256, 256]
-        return self.backbone.features(fea_FAD)
+        return self.backbone.features(fea_FAD), fea_FAD
 
     def classifier(self, features: torch.tensor) -> torch.tensor:
         return self.backbone.classifier(features)
@@ -123,7 +123,7 @@ class F3netDetector(AbstractDetector):
 
     def forward(self, data_dict: dict, inference=False) -> dict:
         # get the features by backbone
-        features = self.features(data_dict)
+        features, fea_FAD = self.features(data_dict)
         # get the prediction by classifier
         pred = self.classifier(features)
         # get the probability of the pred
@@ -150,6 +150,7 @@ class F3netDetector(AbstractDetector):
             correct = (prediction_class == data_dict['label']).sum().item()
             self.correct += correct
             self.total += data_dict['label'].size(0)
+            return pred_dict, fea_FAD
 
         return pred_dict
 
